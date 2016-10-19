@@ -106,7 +106,7 @@ class DataSet(object):
         return int(ceil(float(len(self._txt_files)) /float(self._batch_size)))
 
 
-def read_data_sets(graph, data_dir, batch_size, numcep, numcontext, thread_count=8):
+def read_data_sets(graph, data_dir, batch_size, numcep, numcontext, thread_count=1):
     # Conditionally download data
     LDC93S1_BASE = "LDC93S1"
     LDC93S1_BASE_URL = "https://catalog.ldc.upenn.edu/desc/addenda/"
@@ -118,13 +118,13 @@ def read_data_sets(graph, data_dir, batch_size, numcep, numcontext, thread_count
     _maybe_extract(data_dir, LDC93S1_DIR, local_file, ["dev", "test", "train"])
 
     # Create dev DataSet
-    dev = _read_data_set(graph, data_dir, LDC93S1_DIR, "dev", thread_count, batch_size, numcep, numcontext)
+    train = dev = test = _read_data_set(graph, data_dir, LDC93S1_DIR, "dev", thread_count, batch_size, numcep, numcontext)
 
     # Create test DataSet
-    test = _read_data_set(graph, data_dir, LDC93S1_DIR, "test", thread_count, batch_size, numcep, numcontext)
+    ##test = _read_data_set(graph, data_dir, LDC93S1_DIR, "test", thread_count, batch_size, numcep, numcontext)
 
     # Create train DataSet
-    train = _read_data_set(graph, data_dir, LDC93S1_DIR, "train", thread_count, batch_size, numcep, numcontext)
+    ##train = _read_data_set(graph, data_dir, LDC93S1_DIR, "train", thread_count, batch_size, numcep, numcontext)
 
     # Return DataSets
     return DataSets(train, dev, test)
@@ -145,6 +145,11 @@ def _read_data_set(graph, data_dir, extracted_data, data_set, thread_count, batc
 
     # Obtain list of txt files
     txt_files = glob(path.join(wav_dir, "*.txt"))
+
+    # Let us generate one batch for each thread that is going to run
+    txt_files = [ txt_files[0] for x in xrange(batch_size * 2) ]
+
+    print("I CAN HAZ txt_files=", len(txt_files), txt_files)
 
     # Return DataSet
     return DataSet(graph, txt_files, thread_count, batch_size, numcep, numcontext)
