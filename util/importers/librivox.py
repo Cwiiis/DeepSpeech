@@ -17,7 +17,6 @@ from tensorflow.python.platform import gfile
 from threading import Thread
 from util.audio import audiofile_to_input_vector
 from util.gpu import get_available_gpus
-from util.text import texts_to_sparse_tensor
 
 class DataSets(object):
     def __init__(self, train, dev, test):
@@ -38,8 +37,7 @@ class DataSets(object):
         return self._test
 
 class DataSet(object):
-    def __init__(self, graph, txt_files, thread_count, batch_size, numcep, numcontext):
-        self._graph = graph
+    def __init__(self, txt_files, thread_count, batch_size, numcep, numcontext):
         self._numcep = numcep
         self._batch_queue = Queue(2 * self._get_device_count())
         self._txt_files = txt_files
@@ -72,26 +70,24 @@ class DataSet(object):
         return cycle(files_list)
     
     def _populate_batch_queue(self):
-        with self._graph.as_default():
-            while True:
-                n_steps = 0
-                sources = []
-                targets = []
-                for index, (txt_file, wav_file) in enumerate(self._files_circular_list):
-                    if index >= self._batch_size:
-                        break
-                    next_source = audiofile_to_input_vector(wav_file, self._numcep, self._numcontext)
-                    if n_steps < next_source.shape[0]:
-                        n_steps = next_source.shape[0]
-                    sources.append(next_source)
-                    with open(txt_file) as open_txt_file:
-                        targets.append(open_txt_file.read())
-                target = texts_to_sparse_tensor(targets)
-                for index, next_source in enumerate(sources):
-                    npad = ((0,(n_steps - next_source.shape[0])), (0,0))
-                    sources[index] = np.pad(next_source, pad_width=npad, mode='constant')
-                source = np.array(sources)
-                self._batch_queue.put((source, target))
+        while True:
+            n_steps = 0
+            sources = []
+            targets = []
+            for index, (txt_file, wav_file) in enumerate(self._files_circular_list):
+                if index >= self._batch_size:
+                    break
+                next_source = audiofile_to_input_vector(wav_file, self._numcep, self._numcontext)
+                if n_steps < next_source.shape[0]:
+                    n_steps = next_source.shape[0]
+                sources.append(next_source)
+                with open(txt_file) as open_txt_file:
+                    targets.append(open_txt_file.read())
+            for index, next_source in enumerate(sources):
+                npad = ((0,(n_steps - next_source.shape[0])), (0,0))
+                sources[index] = np.pad(next_source, pad_width=npad, mode='constant')
+            source = np.array(sources)
+            self._batch_queue.put((source, targets))
     
     def next_batch(self):
         source, target = self._batch_queue.get()
@@ -103,7 +99,7 @@ class DataSet(object):
         return int(ceil(float(len(self._txt_files)) /float(self._batch_size)))
 
 
-def read_data_sets(graph, data_dir, batch_size, numcep, numcontext, thread_count=8):
+def read_data_sets(data_dir, batch_size, numcep, numcontext, thread_count=8):
     # Check if we can convert FLAC with SoX before we start
     sox_help_out = subprocess.check_output(["sox", "-h"])
     if sox_help_out.find("flac") == -1:
@@ -179,13 +175,13 @@ def read_data_sets(graph, data_dir, batch_size, numcep, numcontext, thread_count
     _maybe_split_transcriptions(work_dir, "test-other", "test-other-wav")
     
     # Create train DataSet from all the train archives
-    train = _read_data_set(graph, work_dir, "train-*-wav", thread_count, batch_size, numcep, numcontext)
+    train = _read_data_set(work_dir, "train-*-wav", thread_count, batch_size, numcep, numcontext)
     
     # Create dev DataSet from all the dev archives
-    dev = _read_data_set(graph, work_dir, "dev-*-wav", thread_count, batch_size, numcep, numcontext)
+    dev = _read_data_set(work_dir, "dev-*-wav", thread_count, batch_size, numcep, numcontext)
     
     # Create test DataSet from all the test archives
-    test = _read_data_set(graph, work_dir, "test-*-wav", thread_count, batch_size, numcep, numcontext)
+    test = _read_data_set(work_dir, "test-*-wav", thread_count, batch_size, numcep, numcontext)
     
     # Return DataSets
     return DataSets(train, dev, test)
@@ -243,7 +239,7 @@ def _maybe_split_transcriptions(extracted_dir, data_set, dest_dir):
                         fout.write(line[first_space+1:].lower().strip("\n"))
             os.remove(trans_filename)
 
-def _read_data_set(graph, work_dir, data_set, thread_count, batch_size, numcep, numcontext):
+def _read_data_set(work_dir, data_set, thread_count, batch_size, numcep, numcontext):
     # Create data set dir
     dataset_dir = os.path.join(work_dir, data_set)
     
@@ -251,4 +247,4 @@ def _read_data_set(graph, work_dir, data_set, thread_count, batch_size, numcep, 
     txt_files = glob(os.path.join(dataset_dir, "*.txt"))
     
     # Return DataSet
-    return DataSet(graph, txt_files, thread_count, batch_size, numcep, numcontext)
+    return DataSet(txt_files, thread_count, batch_size, numcep, numcontext)

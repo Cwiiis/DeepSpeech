@@ -67,6 +67,12 @@ def sparse_tuple_to_texts(tuple):
     # List of strings
     return results
 
+def tensor_proto_to_text(value):
+    results = ''
+    for i in range(len(value)):
+        results += chr(value[i] + FIRST_INDEX)
+    return results
+
 def wer(original, result):
     return levenshtein(original, result) / float(len(original.split(' ')))
 
