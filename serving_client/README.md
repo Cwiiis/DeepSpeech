@@ -36,11 +36,11 @@ bazel build -c opt //deepspeech_client:deepspeech_client
 Start a server running an exported DeepSpeech model.
 
 ```
-bazel run -c opt //tensorflow_serving/model_servers:tensorflow_model_server --port=9000 --model_name=deepspeech --model_base_path=/path/to/deepspeech/export
+bazel run -c opt -- //tensorflow_serving/model_servers:tensorflow_model_server --port=9000 --model_name=deepspeech --model_base_path=/path/to/deepspeech/export
 ```
 
 Now run the client.
 
 ```
-bazel run -c opt //deepspeech_client/deepspeech_client --server=localhost:9000 --file=/path/to/audio.wav
+bazel run -c opt -- //deepspeech_client:deepspeech_client --server=localhost:9000 --file=/path/to/audio.wav
 ```
