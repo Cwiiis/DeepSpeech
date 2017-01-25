@@ -1,44 +1,49 @@
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/platform/env.h"
+#include "deepspeech.h"
 
 using namespace tensorflow;
 
-int main(int argc, char* argv[]) {
-  // Validate arguments
-  if (argc < 2) {
-    std::cout << "Usage: deepspeech_native_client [path of export.meta]\n";
-    return 1;
-  }
-
-  const char* export_path = argv[1];
-
-  // Initialize a tensorflow session
+struct _DeepSpeechContext {
   Session* session;
-  Status status = NewSession(SessionOptions(), &session);
-  if (!status.ok()) {
-    std::cout << status.ToString() << "\n";
-    return 1;
-  }
-
-  // Read in the graph
   GraphDef graph_def;
-  status = ReadBinaryProto(Env::Default(), export_path, &graph_def);
-  if (!status.ok()) {
-    std::cout << status.ToString() << "\n";
-    return 1;
+};
+
+DeepSpeechContext*
+DsInit(const char* aModelPath)
+{
+  if (!aModelPath) {
+    return NULL;
   }
 
-  // Add the graph to the session
-  status = session->Create(graph_def);
+  DeepSpeechContext* ctx = new DeepSpeechContext;
+
+  Status status = NewSession(SessionOptions(), &ctx->session);
   if (!status.ok()) {
-    std::cout << status.ToString() << "\n";
-    return 1;
+    delete ctx;
+    return NULL;
   }
 
-  // Setup inputs and outputs:
+  status = ReadBinaryProto(Env::Default(), aModelPath, &ctx->graph_def);
+  if (!status.ok()) {
+    ctx->session->Close();
+    delete ctx;
+    return NULL;
+  }
 
-  session->Close();
-  return 0;
+  return ctx;
+}
+
+void
+DsClose(DeepSpeechContext* aCtx)
+{
+  if (!aCtx) {
+    return;
+  }
+
+  aCtx->session->Close();
+  delete aCtx;
+}
 
   /*// Our graph doesn't require any inputs, since it specifies default values,
   // but we'll change an input to demonstrate.
@@ -77,5 +82,4 @@ int main(int argc, char* argv[]) {
   // Free any resources used by the session
   session->Close();
   return 0;*/
-}
 
