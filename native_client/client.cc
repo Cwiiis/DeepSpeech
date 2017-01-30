@@ -4,10 +4,10 @@
 #include "kiss_fft.h"
 #include "libmfcc.h"
 
+#define WIN_SIZE 512
+
 int main(int argc, char **argv)
 {
-  const size_t win_size = 512;
-
   if (argc < 3) {
     printf("Usage: deepspeech [model path] [audio path]\n");
     return 1;
@@ -87,8 +87,25 @@ int main(int argc, char **argv)
   sox_close(output);
 
   // Run buffer through FFT
-  // ...
+  kiss_fft_cpx in[WIN_SIZE];
+  size_t nfft = buffer_size / (WIN_SIZE * 2);
+  kiss_fft_cpx* out =
+    (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * nfft * WIN_SIZE);
+  kiss_fft_cfg cfg = kiss_fft_alloc(WIN_SIZE, 0, 0, 0);
+
+  for (int i = 0; i < nfft; i++) {
+    int buffer_index = i * WIN_SIZE;
+    for (int j = buffer_index; j < buffer_index + WIN_SIZE; j++) {
+      short value = ((short*)buffer)[j];
+      in[j - buffer_index].r = (kiss_fft_scalar)((double)value / 32768.0);
+      in[j - buffer_index].i = 0.0;
+    }
+    kiss_fft(cfg, in, &out[i * WIN_SIZE]);
+  }
   free(buffer);
+
+  // Convert complex values to amplitude
+  // ...
 
   // Run FFT through MFCC
   // ...
