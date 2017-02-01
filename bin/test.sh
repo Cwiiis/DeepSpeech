@@ -66,7 +66,7 @@ export ds_display_step=10
 export ds_limit_train=500
 export ds_limit_dev=500
 export ds_limit_test=500
-
+export ds_epochs=100
 
 # First with no ResNet and 0.3 dropout
 do_inference ted 0.3 0.3 0.0 0.0 0.0 0.0 1.0 1.0
