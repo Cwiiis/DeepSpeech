@@ -4,7 +4,7 @@
 set -xe
 
 do_inference () {
-  echo '--- $1, dropout = $2, $3, RNN dropout = $4, $5, $6, $7, swapout = $8, $9'
+  echo "--- $1, dropout = $2, $3, RNN dropout = $4, $5, $6, $7, swapout = $8, $9"
 
   export ds_importer=$1
 
@@ -31,19 +31,21 @@ export ds_dev_batch_size=1
 export ds_test_batch_size=1
 export ds_epochs=200
 export ds_validation_step=0
+export ds_checkpoint_step=0
 
 # Testing with LDC to see how variables affect convergence speed
 # Test feed-forward layers with varying levels of dropout
-do_inference ldc93s1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
-do_inference ldc93s1 0.1 0.1 0.0 0.0 0.0 0.0 0.0 0.0
-do_inference ldc93s1 0.2 0.2 0.0 0.0 0.0 0.0 0.0 0.0
-do_inference ldc93s1 0.3 0.3 0.0 0.0 0.0 0.0 0.0 0.0
-do_inference ldc93s1 0.4 0.4 0.0 0.0 0.0 0.0 0.0 0.0
+do_inference ldc93s1 0.0 0.0 0.0 0.0 0.0 0.0 1.0 1.0
+do_inference ldc93s1 0.1 0.1 0.0 0.0 0.0 0.0 1.0 1.0
+do_inference ldc93s1 0.2 0.2 0.0 0.0 0.0 0.0 1.0 1.0
+do_inference ldc93s1 0.3 0.3 0.0 0.0 0.0 0.0 1.0 1.0
+do_inference ldc93s1 0.4 0.4 0.0 0.0 0.0 0.0 1.0 1.0
 
 # Same thing with linearly increasing dropout
-do_inference ldc93s1 0.1 0.4 0.0 0.0 0.0 0.0 0.0 0.0
+do_inference ldc93s1 0.1 0.4 0.0 0.0 0.0 0.0 1.0 1.0
 
 # Same thing with ResNet + swapout
+do_inference ldc93s1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
 do_inference ldc93s1 0.1 0.1 0.0 0.0 0.0 0.0 0.1 0.1
 do_inference ldc93s1 0.2 0.2 0.0 0.0 0.0 0.0 0.2 0.2
 do_inference ldc93s1 0.3 0.3 0.0 0.0 0.0 0.0 0.3 0.3
@@ -58,19 +60,20 @@ export ds_train_batch_size=16
 export ds_dev_batch_size=8
 export ds_test_batch_size=8
 export ds_learning_rate=0.0001
-export ds_validation_step=20
-export ds_display_step=10
+export ds_validation_step=10
 export ds_checkpoint_step=10
+export ds_display_step=10
 export ds_limit_train=500
 export ds_limit_dev=500
 export ds_limit_test=500
 
+
 # First with no ResNet and 0.3 dropout
-do_inference ted 0.3 0.3 0.0 0.0 0.0 0.0 0.0 0.0
+do_inference ted 0.3 0.3 0.0 0.0 0.0 0.0 1.0 1.0
 # Then with linearly increasing dropout
-do_inference ted 0.1 0.4 0.0 0.0 0.0 0.0 0.0 0.0
+do_inference ted 0.1 0.4 0.0 0.0 0.0 0.0 1.0 1.0
 # Then with linearly increasing dropout + RNN dropout
-do_inference ted 0.1 0.4 0.2 0.2 0.2 0.2 0.0 0.0
+do_inference ted 0.1 0.4 0.2 0.2 0.2 0.2 1.0 1.0
 # Then with ResNet and 0.3 swapout
 do_inference ted 0.3 0.3 0.0 0.0 0.0 0.0 0.3 0.3
 # Then with ResNet and linearly increasing swapout
