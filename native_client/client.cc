@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <sox.h>
 #include "deepspeech.h"
 #include "tools/kiss_fftr.h"
@@ -10,6 +11,10 @@
 #define WIN_STEP 10
 #define N_CEPSTRUM 26
 #define N_FILTERS 26
+
+#define COEFF 0.97f
+#define WIN_LEN 0.025f
+#define WIN_STEP 0.01f
 
 int main(int argc, char **argv)
 {
@@ -38,7 +43,7 @@ int main(int argc, char **argv)
   };
 
   sox_encodinginfo_t target_encoding = {
-    SOX_ENCODING_UNSIGNED, // Sample format
+    SOX_ENCODING_SIGN2, // Sample format
     16, // Bits per sample
     0.0, // Compression factor
     sox_option_default, // Should bytes be reversed
@@ -93,6 +98,68 @@ int main(int argc, char **argv)
 
   printf("Buffer length: %d\n", buffer_size);
 
+  // Calculate frame variables and padding
+  int slen = buffer_size / 2;
+  int frame_len = (int)roundf(WIN_LEN * SAMPLE_RATE);
+  int frame_step = (int)roundf(WIN_STEP * SAMPLE_RATE);
+  int n_frames = 1;
+  if (slen > frame_len) {
+    n_frames = 1 + (int)ceilf((slen - frame_len) / (float)frame_step);
+  }
+  int padlen = (n_frames - 1) * frame_step + frame_len;
+
+  // Preemphasis
+  float* buffer_preemph = (float*)calloc(sizeof(float), slen + padlen);
+  short* sbuffer = (short*)buffer;
+  for (int i = slen - 1; i >= 1; i--) {
+    buffer_preemph[i] = sbuffer[i] - sbuffer[i-1] * COEFF;
+  }
+  buffer_preemph[0] = (float)sbuffer[0];
+
+  printf("Audio[0..5]     = (%hhd, %hhd),\n"
+         "                  (%hhd, %hhd),\n"
+         "                  (%hhd, %hhd)\n",
+         buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5]);
+  printf("sAudio[0..2]    = %hd, %hd, %hd\n",
+         sbuffer[0], sbuffer[1], sbuffer[2]);
+  free(buffer);
+
+  // Frame into overlapping frames
+  /*
+  indices =
+    numpy.tile(numpy.arange(0,frame_len),
+               (numframes,1)) +
+    numpy.tile(numpy.arange(0,numframes*frame_step,frame_step),
+               (frame_len,1)).T
+  */
+  int** indices = (int**)malloc(sizeof(int*) * n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    indices[i] = (int*)malloc(sizeof(int) * frame_len);
+    int base = i * frame_step;
+    for (int j = 0; j < frame_len; j++) {
+      indices[i][j] = base + j;
+    }
+  }
+
+  float** frames = (float**)malloc(sizeof(float*) * n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    frames[i] = (float*)malloc(sizeof(float) * frame_len);
+    for (int j = 0; j < frame_len; j++) {
+      frames[i][j] = buffer_preemph[indices[i][j]];
+    }
+    free (indices[i]);
+  }
+  free(indices);
+
+  printf("n_frames = %d, frame_len = %d\n", n_frames, frame_len);
+
+  printf("PreAudio[0..2]  = %.2f, %.2f, %.2f\n"
+         "Frames[0][0..2] = %.2f, %.2f, %.2f\n",
+         buffer_preemph[0], buffer_preemph[1], buffer_preemph[2],
+         frames[0][0], frames[0][1], frames[0][2]);
+  free(buffer_preemph);
+
+  /*
   // Run buffer through FFT
   size_t features = buffer_size / (WIN_SIZE * 2);
   kiss_fft_scalar in[WIN_SIZE];
@@ -171,7 +238,7 @@ int main(int argc, char **argv)
   for (int i = 0; i < out_mfcc_size; i++) {
     free(out_mfcc[i]);
   }
-  free(out_mfcc);
+  free(out_mfcc);*/
 
   // Deinitialise and quit
   DsClose(ctx);
