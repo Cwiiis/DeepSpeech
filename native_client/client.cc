@@ -273,9 +273,30 @@ int main(int argc, char **argv)
          dct[n_frames-1][N_CEP-1]);
 
   // Apply a cepstral lifter
+  for (int i = 0; i < n_frames; i++) {
+    for (int j = 0; j < N_CEP; j++) {
+      dct[i][j] *= 1 + (CEP_LIFTER / 2.0f) * sinf(M_PI * j / CEP_LIFTER);
+    }
+  }
+
+  printf("Post cepstral lifter:\n");
+  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
+         "dct[n][n-2..n] = %.4f, %.4f, %.4f\n",
+         dct[0][0], dct[0][1], dct[0][2],
+         dct[n_frames-1][N_CEP-3],
+         dct[n_frames-1][N_CEP-2],
+         dct[n_frames-1][N_CEP-1]);
 
   // Append energies
+  for (int i = 0; i < n_frames; i++) {
+    dct[i][0] = logf(energy[i]);
+  }
 
+  printf("Post energy appending:\n");
+  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
+         "dct[1][0..2] = %.4f, %.4f, %.4f\n",
+         dct[0][0], dct[0][1], dct[0][2],
+         dct[1][0], dct[1][1], dct[1][2]);
   /*
   // Run buffer through FFT
   size_t features = buffer_size / (WIN_SIZE * 2);
