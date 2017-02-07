@@ -4,7 +4,6 @@
 #include <sox.h>
 #include "deepspeech.h"
 #include "tools/kiss_fftr.h"
-#include "libmfcc.h"
 
 #define SAMPLE_RATE 16000
 #define COEFF 0.97f
@@ -103,8 +102,6 @@ int main(int argc, char **argv)
   sox_delete_effects_chain(chain);
   sox_close(output);
 
-  printf("Buffer length: %d\n", buffer_size);
-
   // Calculate frame variables and padding
   int slen = buffer_size / 2;
   int frame_len = (int)roundf(WIN_LEN * SAMPLE_RATE);
@@ -122,23 +119,9 @@ int main(int argc, char **argv)
     buffer_preemph[i] = sbuffer[i] - sbuffer[i-1] * COEFF;
   }
   buffer_preemph[0] = (float)sbuffer[0];
-
-  printf("Audio[0..5]     = (%hhd, %hhd),\n"
-         "                  (%hhd, %hhd),\n"
-         "                  (%hhd, %hhd)\n",
-         buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5]);
-  printf("sAudio[0..2]    = %hd, %hd, %hd\n",
-         sbuffer[0], sbuffer[1], sbuffer[2]);
   free(buffer);
 
   // Frame into overlapping frames
-  /*
-  indices =
-    numpy.tile(numpy.arange(0,frame_len),
-               (numframes,1)) +
-    numpy.tile(numpy.arange(0,numframes*frame_step,frame_step),
-               (frame_len,1)).T
-  */
   int** indices = (int**)malloc(sizeof(int*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
     indices[i] = (int*)malloc(sizeof(int) * frame_len);
@@ -157,13 +140,6 @@ int main(int argc, char **argv)
     free (indices[i]);
   }
   free(indices);
-
-  printf("n_frames = %d, frame_len = %d\n", n_frames, frame_len);
-
-  printf("PreAudio[0..2]  = %.2f, %.2f, %.2f\n"
-         "Frames[0][0..2] = %.2f, %.2f, %.2f\n",
-         buffer_preemph[0], buffer_preemph[1], buffer_preemph[2],
-         frames[0][0], frames[0][1], frames[0][2]);
   free(buffer_preemph);
 
   // Compute the power spectrum of each frame
@@ -174,15 +150,14 @@ int main(int argc, char **argv)
     pspec[i] = (float*)malloc(sizeof(float) * FFT_OUT);
     // Compute the magnitude spectrum
     kiss_fftr(cfg, frames[i], out);
+    free(frames[i]);
     for (int j = 0; j < FFT_OUT; j++) {
       // Compute the power spectrum
       float abs = sqrtf(pow(out[j].r, 2.0f) + pow(out[j].i, 2.0f));
       pspec[i][j] = (1.0/N_FFT) * powf(abs, 2.0f);
     }
   }
-
-  printf("pspec[0][0..2] = %f, %f, %f\n",
-         pspec[0][0], pspec[0][1], pspec[0][2]);
+  free(frames);
 
   // Compute the energy
   float* energy = (float*)calloc(sizeof(float), n_frames);
@@ -194,8 +169,6 @@ int main(int argc, char **argv)
       energy[i] = FLT_MIN;
     }
   }
-
-  printf("energy[0..2] = %f, %f, %f\n", energy[0], energy[1], energy[2]);
 
   // Compute a Mel-filterbank
   float lowmel = HZ2MEL(LOWFREQ);
@@ -221,13 +194,6 @@ int main(int argc, char **argv)
     }
   }
 
-  printf("fbank[0][0..2] = %.2f, %.2f, %.2f\n"
-         "fbank[n][n-2..n] = %.2f, %.2f, %.2f\n",
-         fbank[0][0], fbank[0][1], fbank[0][2],
-         fbank[N_FILTERS-1][FFT_OUT-3],
-         fbank[N_FILTERS-1][FFT_OUT-2],
-         fbank[N_FILTERS-1][FFT_OUT-1]);
-
   // Compute the filter-bank energies
   float** feat = (float**)malloc(sizeof(float*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
@@ -243,140 +209,49 @@ int main(int argc, char **argv)
     }
   }
 
-  printf("feat[0][0..2] = %.4f, %.4f, %.4f\n"
-         "feat[n][n-2..n] = %.4f, %.4f, %.4f\n",
-         feat[0][0], feat[0][1], feat[0][2],
-         feat[n_frames-1][N_FILTERS-3],
-         feat[n_frames-1][N_FILTERS-2],
-         feat[n_frames-1][N_FILTERS-1]);
-
   // Perform DCT-II
   float sf1 = sqrtf(1 / (4 * (float)N_FILTERS));
   float sf2 = sqrtf(1 / (2 * (float)N_FILTERS));
-  float** dct = (float**)malloc(sizeof(float*) * n_frames);
+  float** mfcc = (float**)malloc(sizeof(float*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
-    dct[i] = (float*)calloc(sizeof(float), N_CEP);
+    mfcc[i] = (float*)calloc(sizeof(float), N_CEP);
     for (int j = 0; j < N_CEP; j++) {
       for (int k = 0; k < N_CEP; k++) {
-        dct[i][j] += feat[i][k] *
+        mfcc[i][j] += feat[i][k] *
           cosf(M_PI * j * (2 * k + 1) / (2 * N_FILTERS));
       }
-      dct[i][j] *= 2 * ((i == 0 && j == 0) ? sf1 : sf2);
+      mfcc[i][j] *= 2 * ((i == 0 && j == 0) ? sf1 : sf2);
     }
   }
 
-  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
-         "dct[n][n-2..n] = %.4f, %.4f, %.4f\n",
-         dct[0][0], dct[0][1], dct[0][2],
-         dct[n_frames-1][N_CEP-3],
-         dct[n_frames-1][N_CEP-2],
-         dct[n_frames-1][N_CEP-1]);
+  for (int i = 0; i < n_frames; i++) {
+    free(feat[i]);
+  }
+  free(feat);
 
   // Apply a cepstral lifter
   for (int i = 0; i < n_frames; i++) {
     for (int j = 0; j < N_CEP; j++) {
-      dct[i][j] *= 1 + (CEP_LIFTER / 2.0f) * sinf(M_PI * j / CEP_LIFTER);
+      mfcc[i][j] *= 1 + (CEP_LIFTER / 2.0f) * sinf(M_PI * j / CEP_LIFTER);
     }
   }
-
-  printf("Post cepstral lifter:\n");
-  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
-         "dct[n][n-2..n] = %.4f, %.4f, %.4f\n",
-         dct[0][0], dct[0][1], dct[0][2],
-         dct[n_frames-1][N_CEP-3],
-         dct[n_frames-1][N_CEP-2],
-         dct[n_frames-1][N_CEP-1]);
 
   // Append energies
   for (int i = 0; i < n_frames; i++) {
-    dct[i][0] = logf(energy[i]);
+    mfcc[i][0] = logf(energy[i]);
   }
+  free(energy);
 
-  printf("Post energy appending:\n");
-  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
-         "dct[1][0..2] = %.4f, %.4f, %.4f\n",
-         dct[0][0], dct[0][1], dct[0][2],
-         dct[1][0], dct[1][1], dct[1][2]);
-  /*
-  // Run buffer through FFT
-  size_t features = buffer_size / (WIN_SIZE * 2);
-  kiss_fft_scalar in[WIN_SIZE];
-  kiss_fft_cpx out[WIN_SIZE / 2 + 1];
-  kiss_fftr_cfg cfg = kiss_fftr_alloc(WIN_SIZE, 0, NULL, NULL);
-  size_t out_real_size = features * (WIN_SIZE / 2 + 1);
-  double *out_real = (double*)malloc(sizeof(double) * out_real_size);
+  // mfcc now contains the equivalent of python_speech_features.mfcc
 
-  for (int i = 0; i < features; i++) {
-    int buffer_index = i * WIN_SIZE;
-    for (int j = buffer_index; j < buffer_index + WIN_SIZE; j++) {
-      short value = ((short*)buffer)[j];
-      in[j - buffer_index] = (kiss_fft_scalar)((double)value / 32768.0);
-    }
-    kiss_fftr(cfg, in, out);
-
-    buffer_index = i * (WIN_SIZE / 2 + 1);
-    for (int j = 0; j < WIN_SIZE / 2 + 1; j++) {
-      out_real[j + buffer_index] = out[j].r;
-    }
-  }
-  free(buffer);
-
-  printf("Real features: %d\n", out_real_size);
-
-  // Run FFT through MFCC, with a 0.01ms step and a 0.025ms window
-  size_t out_mfcc_size =
-    floor(((buffer_size / 2.0) / (SAMPLE_RATE / 1000.0)) / WIN_STEP);
-  double** out_mfcc = (double**)malloc(sizeof(double*) * out_mfcc_size);
-  for (int i = 0; i < out_mfcc_size; i++) {
-    out_mfcc[i] = (double*)malloc(sizeof(double) * N_CEPSTRUM);
-
-    for (int j = 0; j < N_CEPSTRUM; j++) {
-      out_mfcc[i][j] =
-        GetCoefficient(&out_real[(out_real_size - BIN_SIZE)/out_mfcc_size * i],
-                       SAMPLE_RATE, N_FILTERS, BIN_SIZE, j);
-    }
-  }
-  free(out_real);
-
-  printf("Some coefficients:\n"
-         "%lf, %lf, %lf, %lf, %lf\n"
-         "%lf, %lf, %lf, %lf, %lf\n"
-         "%lf, %lf, %lf, %lf, %lf\n"
-         "%lf, %lf, %lf, %lf, %lf\n"
-         "%lf\n",
-         out_mfcc[1][0],
-         out_mfcc[1][1],
-         out_mfcc[1][2],
-         out_mfcc[1][3],
-         out_mfcc[1][4],
-         out_mfcc[1][5],
-         out_mfcc[1][6],
-         out_mfcc[1][7],
-         out_mfcc[1][8],
-         out_mfcc[1][9],
-         out_mfcc[1][10],
-         out_mfcc[1][11],
-         out_mfcc[1][12],
-         out_mfcc[1][13],
-         out_mfcc[1][14],
-         out_mfcc[1][15],
-         out_mfcc[1][16],
-         out_mfcc[1][17],
-         out_mfcc[1][18],
-         out_mfcc[1][19],
-         out_mfcc[1][20],
-         out_mfcc[1][21],
-         out_mfcc[1][22],
-         out_mfcc[1][23],
-         out_mfcc[1][24],
-         out_mfcc[1][25]);
-
-  // Pass MFCC to DeepSpeech
+  // Pass prepared audio to DeepSpeech
   // ...
-  for (int i = 0; i < out_mfcc_size; i++) {
-    free(out_mfcc[i]);
+
+  // Free memory
+  for (int i = 0; i < n_frames; i++) {
+    free(mfcc[i]);
   }
-  free(out_mfcc);*/
+  free(mfcc);
 
   // Deinitialise and quit
   DsClose(ctx);
