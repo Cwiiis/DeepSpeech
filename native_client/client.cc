@@ -10,13 +10,13 @@
 #define COEFF 0.97f
 #define WIN_LEN 0.025f
 #define WIN_STEP 0.01f
-#define NFFT 512
-#define FFT_OUT (NFFT / 2 + 1)
+#define N_FFT 512
+#define FFT_OUT (N_FFT / 2 + 1)
 #define N_FILTERS 26
 #define LOWFREQ 0
 #define HIGHFREQ (SAMPLE_RATE/2)
-
-#define N_CEPSTRUM 26
+#define N_CEP 26
+#define CEP_LIFTER 22
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -150,7 +150,7 @@ int main(int argc, char **argv)
 
   float** frames = (float**)malloc(sizeof(float*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
-    frames[i] = (float*)calloc(sizeof(float), MAX(NFFT, frame_len));
+    frames[i] = (float*)calloc(sizeof(float), MAX(N_FFT, frame_len));
     for (int j = 0; j < frame_len; j++) {
       frames[i][j] = buffer_preemph[indices[i][j]];
     }
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
   free(buffer_preemph);
 
   // Compute the power spectrum of each frame
-  kiss_fftr_cfg cfg = kiss_fftr_alloc(NFFT, 0, NULL, NULL);
+  kiss_fftr_cfg cfg = kiss_fftr_alloc(N_FFT, 0, NULL, NULL);
   kiss_fft_cpx out[FFT_OUT];
   float** pspec = (float**)malloc(sizeof(float*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
@@ -177,7 +177,7 @@ int main(int argc, char **argv)
     for (int j = 0; j < FFT_OUT; j++) {
       // Compute the power spectrum
       float abs = sqrtf(pow(out[j].r, 2.0f) + pow(out[j].i, 2.0f));
-      pspec[i][j] = (1.0/NFFT) * powf(abs, 2.0f);
+      pspec[i][j] = (1.0/N_FFT) * powf(abs, 2.0f);
     }
   }
 
@@ -204,7 +204,7 @@ int main(int argc, char **argv)
 
   for (int i = 0; i < N_FILTERS + 2; i++) {
     float melpoint = ((highmel - lowmel) / (float)(N_FILTERS + 1) * i) + lowmel;
-    bin[i] = (int)floorf((NFFT + 1) * MEL2HZ(melpoint) / (float)SAMPLE_RATE);
+    bin[i] = (int)floorf((N_FFT + 1) * MEL2HZ(melpoint) / (float)SAMPLE_RATE);
   }
 
   float fbank[N_FILTERS][FFT_OUT] = { 0, };
@@ -251,6 +251,26 @@ int main(int argc, char **argv)
          feat[n_frames-1][N_FILTERS-1]);
 
   // Perform DCT-II
+  float sf1 = sqrtf(1 / (4 * (float)N_FILTERS));
+  float sf2 = sqrtf(1 / (2 * (float)N_FILTERS));
+  float** dct = (float**)malloc(sizeof(float*) * n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    dct[i] = (float*)calloc(sizeof(float), N_CEP);
+    for (int j = 0; j < N_CEP; j++) {
+      for (int k = 0; k < N_CEP; k++) {
+        dct[i][j] += feat[i][k] *
+          cosf(M_PI * j * (2 * k + 1) / (2 * N_FILTERS));
+      }
+      dct[i][j] *= 2 * ((i == 0 && j == 0) ? sf1 : sf2);
+    }
+  }
+
+  printf("dct[0][0..2] = %.4f, %.4f, %.4f\n"
+         "dct[n][n-2..n] = %.4f, %.4f, %.4f\n",
+         dct[0][0], dct[0][1], dct[0][2],
+         dct[n_frames-1][N_CEP-3],
+         dct[n_frames-1][N_CEP-2],
+         dct[n_frames-1][N_CEP-1]);
 
   // Apply a cepstral lifter
 
