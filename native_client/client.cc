@@ -1,20 +1,24 @@
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <sox.h>
 #include "deepspeech.h"
 #include "tools/kiss_fftr.h"
 #include "libmfcc.h"
 
-#define WIN_SIZE 512
 #define SAMPLE_RATE 16000
-#define BIN_SIZE 64
-#define WIN_STEP 10
-#define N_CEPSTRUM 26
-#define N_FILTERS 26
-
 #define COEFF 0.97f
 #define WIN_LEN 0.025f
 #define WIN_STEP 0.01f
+#define NFFT 512
+#define FFT_OUT (NFFT / 2 + 1)
+#define N_FILTERS 26
+#define LOWFREQ 0
+#define HIGHFREQ (SAMPLE_RATE/2)
+
+#define N_CEPSTRUM 26
+
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
 
 int main(int argc, char **argv)
 {
@@ -143,7 +147,7 @@ int main(int argc, char **argv)
 
   float** frames = (float**)malloc(sizeof(float*) * n_frames);
   for (int i = 0; i < n_frames; i++) {
-    frames[i] = (float*)malloc(sizeof(float) * frame_len);
+    frames[i] = (float*)calloc(sizeof(float), MAX(NFFT, frame_len));
     for (int j = 0; j < frame_len; j++) {
       frames[i][j] = buffer_preemph[indices[i][j]];
     }
@@ -158,6 +162,41 @@ int main(int argc, char **argv)
          buffer_preemph[0], buffer_preemph[1], buffer_preemph[2],
          frames[0][0], frames[0][1], frames[0][2]);
   free(buffer_preemph);
+
+  // Compute the power spectrum of each frame
+  kiss_fftr_cfg cfg = kiss_fftr_alloc(NFFT, 0, NULL, NULL);
+  kiss_fft_cpx out[FFT_OUT];
+  float** pspec = (float**)malloc(sizeof(float*) * n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    pspec[i] = (float*)malloc(sizeof(float) * FFT_OUT);
+    // Compute the magnitude spectrum
+    kiss_fftr(cfg, frames[i], out);
+    for (int j = 0; j < FFT_OUT; j++) {
+      // Compute the power spectrum
+      float abs = sqrtf(pow(out[j].r, 2.0f) + pow(out[j].i, 2.0f));
+      pspec[i][j] = (1.0/NFFT) * powf(abs, 2.0f);
+    }
+  }
+
+  printf("pspec[0][0..2] = %f, %f, %f\n",
+         pspec[0][0], pspec[0][1], pspec[0][2]);
+
+  // Compute the energy
+  float* energy = (float*)calloc(sizeof(float), n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    for (int j = 0; j < FFT_OUT; j++) {
+      energy[i] += pspec[i][j];
+    }
+    if (energy[i] == 0.0f) {
+      energy[i] = FLT_MIN;
+    }
+  }
+
+  printf("energy[0..2] = %f, %f, %f\n", energy[0], energy[1], energy[2]);
+
+  // fb = get_filterbanks(nfilt,nfft,samplerate,lowfreq,highfreq)
+
+
 
   /*
   // Run buffer through FFT
