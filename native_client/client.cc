@@ -19,6 +19,9 @@
 #define N_CEPSTRUM 26
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#define HZ2MEL(x) (2595 * log10f(1+x/700.0f))
+#define MEL2HZ(x) (700 * (powf(10.0f, x/2595.0f) - 1))
 
 int main(int argc, char **argv)
 {
@@ -194,9 +197,64 @@ int main(int argc, char **argv)
 
   printf("energy[0..2] = %f, %f, %f\n", energy[0], energy[1], energy[2]);
 
-  // fb = get_filterbanks(nfilt,nfft,samplerate,lowfreq,highfreq)
+  // Compute a Mel-filterbank
+  float lowmel = HZ2MEL(LOWFREQ);
+  float highmel = HZ2MEL(HIGHFREQ);
+  int bin[N_FILTERS + 2];
 
+  for (int i = 0; i < N_FILTERS + 2; i++) {
+    float melpoint = ((highmel - lowmel) / (float)(N_FILTERS + 1) * i) + lowmel;
+    bin[i] = (int)floorf((NFFT + 1) * MEL2HZ(melpoint) / (float)SAMPLE_RATE);
+  }
 
+  float fbank[N_FILTERS][FFT_OUT] = { 0, };
+  for (int i = 0; i < N_FILTERS; i++) {
+    int start = MIN(bin[i], bin[i+1]);
+    int end = MAX(bin[i], bin[i+1]);
+    for (int j = start; j < end; j++) {
+      fbank[i][j] = (j - bin[i]) / (float)(bin[i+1]-bin[i]);
+    }
+    start = MIN(bin[i+1], bin[i+2]);
+    end = MAX(bin[i+1], bin[i+2]);
+    for (int j = start; j < end; j++) {
+      fbank[i][j] = (bin[i+2]-j) / (float)(bin[i+2]-bin[i+1]);
+    }
+  }
+
+  printf("fbank[0][0..2] = %.2f, %.2f, %.2f\n"
+         "fbank[n][n-2..n] = %.2f, %.2f, %.2f\n",
+         fbank[0][0], fbank[0][1], fbank[0][2],
+         fbank[N_FILTERS-1][FFT_OUT-3],
+         fbank[N_FILTERS-1][FFT_OUT-2],
+         fbank[N_FILTERS-1][FFT_OUT-1]);
+
+  // Compute the filter-bank energies
+  float** feat = (float**)malloc(sizeof(float*) * n_frames);
+  for (int i = 0; i < n_frames; i++) {
+    feat[i] = (float*)calloc(sizeof(float), N_FILTERS);
+    for (int j = 0; j < N_FILTERS; j++) {
+      for (int k = 0; k < FFT_OUT; k++) {
+        feat[i][j] += pspec[i][k] * fbank[j][k];
+      }
+      if (feat[i][j] == 0.0f) {
+        feat[i][j] = FLT_MIN;
+      }
+      feat[i][j] = logf(feat[i][j]);
+    }
+  }
+
+  printf("feat[0][0..2] = %.4f, %.4f, %.4f\n"
+         "feat[n][n-2..n] = %.4f, %.4f, %.4f\n",
+         feat[0][0], feat[0][1], feat[0][2],
+         feat[n_frames-1][N_FILTERS-3],
+         feat[n_frames-1][N_FILTERS-2],
+         feat[n_frames-1][N_FILTERS-1]);
+
+  // Perform DCT-II
+
+  // Apply a cepstral lifter
+
+  // Append energies
 
   /*
   // Run buffer through FFT
