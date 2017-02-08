@@ -10,12 +10,16 @@
 #define WIN_LEN 0.025f
 #define WIN_STEP 0.01f
 #define N_FFT 512
-#define FFT_OUT (N_FFT / 2 + 1)
 #define N_FILTERS 26
 #define LOWFREQ 0
 #define HIGHFREQ (SAMPLE_RATE/2)
 #define N_CEP 26
 #define CEP_LIFTER 22
+#define N_CONTEXT 9
+
+#define FFT_OUT (N_FFT / 2 + 1)
+#define INPUT_SIZE (N_CEP + (2 * N_CEP * N_CONTEXT))
+#define CONTEXT_SIZE (N_CEP * N_CONTEXT)
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -244,14 +248,76 @@ int main(int argc, char **argv)
 
   // mfcc now contains the equivalent of python_speech_features.mfcc
 
-  // Pass prepared audio to DeepSpeech
-  // ...
+  // Take every other frame (BiRNN stride of 2) and add past/future context
+  int ds_input_length = (n_frames + 1) / 2;
+  float** ds_input = (float**)malloc(sizeof(float*) * ds_input_length);
+  for (int i = 0; i < ds_input_length; i++) {
+    // TODO: Use MFCC of silence instead of zero
+    ds_input[i] = (float*)calloc(sizeof(float), INPUT_SIZE);
 
-  // Free memory
+    // Past context
+    for (int j = N_CONTEXT; j > 0; j--) {
+      int frame_index = (i * 2) - (j * 2);
+      if (frame_index < 0) { continue; }
+      int base = (N_CONTEXT - j) * N_CEP;
+      for (int k = 0; k < N_CEP; k++) {
+        ds_input[i][base + k] = mfcc[frame_index][k];
+      }
+    }
+
+    // Present context
+    for (int j = 0; j < N_CEP; j++) {
+      ds_input[i][j + CONTEXT_SIZE] = mfcc[i * 2][j];
+    }
+
+    // Future context
+    for (int j = 1; j <= N_CONTEXT; j++) {
+      int frame_index = (i * 2) + (j * 2);
+      if (frame_index >= n_frames) { continue; }
+      int base = CONTEXT_SIZE + N_CEP + ((j - 1) * N_CEP);
+      for (int k = 0; k < N_CEP; k++) {
+        ds_input[i][base + k] = mfcc[frame_index][k];
+      }
+    }
+  }
+
+  // Free mfcc process
   for (int i = 0; i < n_frames; i++) {
     free(mfcc[i]);
   }
   free(mfcc);
+
+  // Whiten inputs (TODO: Should we whiten)
+  double n_inputs = (double)(ds_input_length * INPUT_SIZE);
+  double mean = 0.0;
+  for (int i = 0; i < ds_input_length; i++) {
+    for (int j = 0; j < INPUT_SIZE; j++) {
+      mean += ds_input[i][j] / n_inputs;
+    }
+  }
+
+  double stddev = 0.0;
+  for (int i = 0; i < ds_input_length; i++) {
+    for (int j = 0; j < INPUT_SIZE; j++) {
+      stddev += pow(fabs(ds_input[i][j] - mean), 2.0) / n_inputs;
+    }
+  }
+  stddev = sqrt(stddev);
+
+  for (int i = 0; i < ds_input_length; i++) {
+    for (int j = 0; j < INPUT_SIZE; j++) {
+      ds_input[i][j] = (float)((ds_input[i][j] - mean) / stddev);
+    }
+  }
+
+  // Pass prepared audio to DeepSpeech
+  // ...
+
+  // Free memory
+  for (int i = 0; i < ds_input_length; i++) {
+    free(ds_input[i]);
+  }
+  free(ds_input);
 
   // Deinitialise and quit
   DsClose(ctx);
