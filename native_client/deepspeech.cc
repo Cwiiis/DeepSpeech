@@ -2,15 +2,19 @@
 #include "tensorflow/core/platform/env.h"
 #include "deepspeech.h"
 
+#define INPUT_SIZE (N_CEP + (2 * N_CEP * N_CONTEXT))
+
 using namespace tensorflow;
 
 struct _DeepSpeechContext {
   Session* session;
   GraphDef graph_def;
+  int ncep;
+  int ncontext;
 };
 
 DeepSpeechContext*
-DsInit(const char* aModelPath)
+DsInit(const char* aModelPath, int aNCep, int aNContext)
 {
   if (!aModelPath) {
     return NULL;
@@ -31,6 +35,16 @@ DsInit(const char* aModelPath)
     return NULL;
   }
 
+  status = ctx->session->Create(ctx->graph_def);
+  if (!status.ok()) {
+    ctx->session->Close();
+    delete ctx;
+    return NULL;
+  }
+
+  ctx->ncep = aNCep;
+  ctx->ncontext = aNContext;
+
   return ctx;
 }
 
@@ -45,41 +59,38 @@ DsClose(DeepSpeechContext* aCtx)
   delete aCtx;
 }
 
-  /*// Our graph doesn't require any inputs, since it specifies default values,
-  // but we'll change an input to demonstrate.
-  Tensor a(DT_FLOAT, TensorShape());
-  a.scalar<float>()() = 3.0;
+char*
+DsInfer(DeepSpeechContext* aCtx, float** aBuffer, int aNFrames)
+{
+  const int frameSize = aCtx->ncep + (2 * aCtx->ncep * aCtx->ncontext);
+  Tensor input(DT_FLOAT, TensorShape({1, aNFrames, frameSize}));
 
-  Tensor b(DT_FLOAT, TensorShape());
-  b.scalar<float>()() = 2.0;
-
-  std::vector<std::pair<string, tensorflow::Tensor>> inputs = {
-    { "a", a },
-    { "b", b },
-  };
-
-  // The session will initialize the outputs
-  std::vector<tensorflow::Tensor> outputs;
-
-  // Run the session, evaluating our "c" operation from the graph
-  status = session->Run(inputs, {"c"}, {}, &outputs);
-  if (!status.ok()) {
-    std::cout << status.ToString() << "\n";
-    return 1;
+  auto input_mapped = input.tensor<float, 3>();
+  for (int i = 0; i < aNFrames; i++) {
+    for (int j = 0; j < frameSize; j++) {
+      input_mapped(0, i, j) = aBuffer[i][j];
+    }
   }
 
-  // Grab the first output (we only evaluated one graph node: "c")
-  // and convert the node to a scalar representation.
-  auto output_c = outputs[0].scalar<float>();
+  std::vector<Tensor> outputs;
+  Status status =
+    aCtx->session->Run({{ "input_node", input }},
+                       {"output_node"}, {}, &outputs);
+  if (!status.ok()) {
+    std::cerr << "Error running session: " << status.ToString() << "\n";
+    return NULL;
+  }
 
-  // (There are similar methods for vectors and matrices here:
-  // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/public/tensor.h)
+  // Output is an array of shape (1, n_results, result_length).
+  // In this case, n_results is also equal to 1.
+  auto output_mapped = outputs[0].tensor<int64, 3>();
+  int length = output_mapped.dimension(2) + 1;
+  char* output = (char*)malloc(sizeof(char) * length);
+  for (int i = 0; i < length - 1; i++) {
+    int64 character = output_mapped(0, 0, i);
+    output[i] = (character ==  0) ? ' ' : (character + 'a' - 1);
+  }
+  output[length - 1] = '\0';
 
-  // Print the results
-  std::cout << outputs[0].DebugString() << "\n"; // Tensor<type: float shape: [] values: 30>
-  std::cout << output_c() << "\n"; // 30
-
-  // Free any resources used by the session
-  session->Close();
-  return 0;*/
-
+  return output;
+}

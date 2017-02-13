@@ -21,7 +21,8 @@
 #define INPUT_SIZE (N_CEP + (2 * N_CEP * N_CONTEXT))
 #define CONTEXT_SIZE (N_CEP * N_CONTEXT)
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
   if (argc < 3) {
     printf("Usage: deepspeech [model path] [audio path]\n");
@@ -29,7 +30,7 @@ int main(int argc, char **argv)
   }
 
   // Initialise DeepSpeech
-  DeepSpeechContext* ctx = DsInit(argv[1]);
+  DeepSpeechContext* ctx = DsInit(argv[1], N_CEP, N_CONTEXT);
   assert(ctx);
 
   // Initialise SOX
@@ -170,13 +171,17 @@ int main(int argc, char **argv)
   }
 
   // Pass prepared audio to DeepSpeech
-  // ...
+  char* result = DsInfer(ctx, ds_input, ds_input_length);
+  if (result) {
+    printf("%s\n", result);
+  }
 
   // Free memory
   for (int i = 0; i < ds_input_length; i++) {
     free(ds_input[i]);
   }
   free(ds_input);
+  free(result);
 
   // Deinitialise and quit
   DsClose(ctx);

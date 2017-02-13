@@ -1138,7 +1138,7 @@ if __name__ == "__main__":
             # Run inference
 
             # Input tensor will be of shape [batch_size, n_steps, n_input + 2*n_input*n_context]
-            input_tensor = tf.placeholder(tf.float32, [None, None, n_input + 2*n_input*n_context])
+            input_tensor = tf.placeholder(tf.float32, [None, None, n_input + 2*n_input*n_context], name='input_node')
 
             # Calculate input sequence length. This is done by tiling n_steps, batch_size times.
             # If there are multiple sequences, it is assumed they are padded with zeros to be of
