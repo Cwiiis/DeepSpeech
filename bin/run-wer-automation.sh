@@ -19,7 +19,7 @@ export ds_dataset_path
 ds_importer="ted"
 export ds_importer
 
-ds_train_batch_size=16
+ds_train_batch_size=12
 export ds_train_batch_size
 
 ds_dev_batch_size=8

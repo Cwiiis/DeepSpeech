@@ -4,7 +4,7 @@ set -xe
 
 export ds_importer="ted"
 
-export ds_train_batch_size=16
+export ds_train_batch_size=12
 export ds_dev_batch_size=8
 export ds_test_batch_size=8
 
