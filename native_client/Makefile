@@ -30,8 +30,8 @@ LDFLAGS     := -Wl,-rpath-link,$(RASPBIAN)/lib/arm-linux-gnueabihf -Wl,-rpath-li
 endif
 
 OS := $(shell uname -s)
-CFLAGS  += -L${TFDIR}/bazel-bin/tensorflow -L${TFDIR}/bazel-bin/native_client $(EXTRA_CFLAGS)
-LDFLAGS += -ltensorflow -ldeepspeech -lc_speech_features -lkissfft $(EXTRA_LDFLAGS)
+CFLAGS  += -L${TFDIR}/bazel-bin/native_client $(EXTRA_CFLAGS)
+LDFLAGS += -ldeepspeech $(EXTRA_LDFLAGS)
 
 META_LD_LIBRARY_PATH := LD_LIBRARY_PATH
 ifeq ($(OS),Darwin)
@@ -48,23 +48,20 @@ deepspeech: client.cc
 	$(TOOLCHAIN)$(CXX) -o deepspeech $(CFLAGS) client.cc $(LDFLAGS)
 
 setup.cfg: setup.cfg.in
-	sed -e 's:@LIBDIRS@:${TFDIR}/bazel-bin/tensorflow\:${TFDIR}/bazel-bin/native_client:g' setup.cfg.in > setup.cfg
+	sed -e 's:@LIBDIRS@:${TFDIR}/bazel-bin/native_client:g' setup.cfg.in > setup.cfg
 
 bindings: setup.cfg
 	python ./setup.py bdist_wheel
 
 run: deepspeech
-	${META_LD_LIBRARY_PATH}=${TFDIR}/bazel-bin/tensorflow:${TFDIR}/bazel-bin/native_client:${${META_LD_LIBRARY_PATH}} ./deepspeech ${ARGS}
+	${META_LD_LIBRARY_PATH}=${TFDIR}/bazel-bin/native_client:${${META_LD_LIBRARY_PATH}} ./deepspeech ${ARGS}
+
+debug: deepspeech
+	${META_LD_LIBRARY_PATH}=${TFDIR}/bazel-bin/native_client:${${META_LD_LIBRARY_PATH}} gdb --args ./deepspeech ${ARGS}
 
 install:
 	install -d ${PREFIX}/lib
-	install -m 0644 ${TFDIR}/bazel-bin/tensorflow/libtensorflow.so ${PREFIX}/lib/
-	install -m 0644 ${TFDIR}/bazel-bin/native_client/libkissfft.so ${PREFIX}/lib/
-	install -m 0644 ${TFDIR}/bazel-bin/native_client/libc_speech_features.so ${PREFIX}/lib/
-	install -m 0644 ${TFDIR}/bazel-bin/native_client/libdeepspeech.so ${PREFIX}/lib/
+	install -s -m 0644 ${TFDIR}/bazel-bin/native_client/libdeepspeech.so ${PREFIX}/lib/
 
 uninstall:
-	rm -f ${PREFIX}/lib/libtensorflow.so
-	rm -f ${PREFIX}/lib/libkissfft.so
-	rm -f ${PREFIX}/lib/libc_speech_features.so
 	rm -f ${PREFIX}/lib/libdeepspeech.so
