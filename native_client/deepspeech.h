@@ -117,6 +117,24 @@ namespace DeepSpeech
                           int* aNFrames = NULL,
                           int* aFrameLen = NULL);
 
+void mfcc(const short* signal,
+          unsigned int signal_len,
+          int samplerate,
+          float winlen,
+          float winstep,
+          int numcep,
+          int nfilt,
+          int nfft,
+          int lowfreq,
+          int highfreq,
+          float preemph,
+          int ceplifter,
+          int appendEnergy,
+          float* winfunc,
+          float** mfcc,
+          int* mfcc_dim1,
+          int* mfcc_dim2);
+
 }
 
 #endif /* __DEEPSPEECH_H__ */

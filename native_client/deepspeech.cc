@@ -216,4 +216,19 @@ audioToInputVector(const short* aBuffer, unsigned int aBufferSize,
   }
 }
 
+void
+mfcc(const short* aSignal, unsigned int aSignalLen, int aSampleRate,
+     csf_float aWinLen, csf_float aWinStep,
+     int aNCep, int aNFilters, int aNFFT,
+     int aLowFreq, int aHighFreq, csf_float aPreemph,
+     int aCepLifter, int aAppendEnergy,
+     csf_float* aWinFunc,
+     csf_float** aMFCC, int* mfcc_d1, int* mfcc_d2)
+{
+  *mfcc_d1 = csf_mfcc(aSignal, aSignalLen, aSampleRate, aWinLen, aWinStep,
+                      aNCep, aNFilters, aNFFT, aLowFreq, aHighFreq, aPreemph,
+                      aCepLifter, aAppendEnergy, aWinFunc, aMFCC);
+  *mfcc_d2 = aNCep;
+}
+
 }
